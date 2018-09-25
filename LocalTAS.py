@@ -4,9 +4,15 @@ import zipfile
 import shutil
 from collections import defaultdict
 from importlib import import_module
-from PIL import Image
-from resizeimage import resizeimage
 import random, string
+
+icon_support = False
+try:
+    from PIL import Image
+    from resizeimage import resizeimage
+    icon_support = True
+except:
+    pass
 
 def rndString(length):
     return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(length))
@@ -103,14 +109,14 @@ def create_dir(directory):
 def get_transforms(module):
     trxs     = []
     cnf      = module.__config__
-    author   = "" if not "author" in cnf else cnf['author']
+    author   = cnf.get('author', '')
     prefix   = cnf['prefix']
     trx_file = module.__file__
     for key in cnf['transforms']:
         trx     = cnf['transforms'][key]
-        desc    = "" if not "desc"    in trx else trx['desc']
-        display = id if not "display" in trx else trx['display']
-        trx_set = "" if not "set"     in trx else trx['set']
+        desc    = trx.get('desc', '')
+        display = trx.get('display', '')
+        trx_set = trx.get('set', '')
 
         for entity in trx['input']:
             eName = entity.split('.')[-1]
@@ -177,19 +183,6 @@ def write_trxsets(rdir, module, trxs):
         create_dir(os.path.dirname(fname))
         write_file(fname, xml)
 
-def write_machine(rdir, module):
-    return
-    create_dir(os.path.dirname(fname))
-    # cnf     = module.__config__
-    # if 'machines' in cnf:
-    #     for machine in cnf['machine']
-    """    if getattr(TRANSFORMS, "transform_machine", None) is not None:
-        fname, xml = get_machine(id, TRANSFORMS.transform_machine)
-        write_file(fname, xml)
-        fname, xml = get_machine_setting(id)
-        write_file(fname, xml)"""
-
-
 def rezize_image(fname, oname, x,y):
     with open(fname, 'r+b') as f:
         with Image.open(f) as image:
@@ -197,8 +190,14 @@ def rezize_image(fname, oname, x,y):
             cover.save(oname, image.format)
 
 def write_icons(rdir, module):
+    if not icon_support:
+        print("icons are not supported. Please install Pillow and python-resize-image")
+        return
     cnf     = module.__config__
     if "icons" in cnf:
+        from PIL import Image
+        from resizeimage import resizeimage
+
         for group in cnf['icons']:
             dname = rdir + '/Icons/' + group
             create_dir(dname)
@@ -222,54 +221,66 @@ def write_enity_categories(rdir, module):
             create_dir(os.path.dirname(fname))
             write_file(fname, xml)
 
-def get_entity_xml(id, name, desc, category, icon, fields={}, parent = None):
-    xml = '<MaltegoEntity id="' + id + '" displayName="' + name + '" displayNamePlural="' + name + 's" description="' + desc + '" category="' + category + '" smallIconResource="' + icon + '" largeIconResource="' + icon + '" allowedRoot="true" conversionOrder="2147483647" visible="true">'
+def get_entity_xml(**kwargs):
+    id           = kwargs['id']
+    icon         = kwargs['icon']
+    category     = kwargs['category']
+    display      = kwargs.get('display', id)
+    desc         = kwargs.get('desc', '')
+    parent       = kwargs.get('parent', None)
+    fields       = kwargs.get('properties', None)
+    editValue    = kwargs.get('editValue', None)
+    displayValue = kwargs.get('displayValue', None)
+
+    xml = '<MaltegoEntity id="' + id + '" displayName="' + display + '" displayNamePlural="' + display + 's" description="' + desc + '" category="' + category + '" smallIconResource="' + icon + '" largeIconResource="' + icon + '" allowedRoot="true" conversionOrder="2147483647" visible="true">'
     if parent is not None:
         xml += '<BaseEntities>' \
                   '<BaseEntity>' + parent + '</BaseEntity>' \
                '</BaseEntities>'
-    xml +=     '<Properties value="properties.user-forum">' \
+
+    editValue    = (' value="properties.' + editValue + '"')           if editValue is not None else ''
+    displayValue = (' displayValue="properties.' + displayValue + '"') if displayValue is not None else ''
+    props        = ''.join([displayValue,editValue])
+    xml +=     '<Properties' + props + '>' \
                   '<Groups/>' \
-                  '<Fields>'
 
-    if len(fields) == 0:
-        fields['Value'] = {}
-
-    for fieldName in fields:
-        field = fields[fieldName]
-        if 'default' in field:
-            evaluator = 'maltego.replace' if not 'evaluator' in field else field['evaluator']
-            ftype  = 'string' if not 'type' in field else field['type']
-            desc   = '' if not 'desc'   in field else field['desc']
-            sample = '' if not 'sample' in field else field['sample']
-            xml +=   '<Field name="properties.' + fieldName + '" type="' + ftype + '" nullable="true" hidden="false" readonly="false" description="' + desc + '" evaluator="' + evaluator + '" displayName="' + fieldName + '">' \
-                        '<DefaultValue>'+ field['default'] + '</DefaultValue>' \
-                        '<SampleValue>' + sample + '</SampleValue>' \
-                     '</Field>'
-        else:
-            ftype  = 'string' if not 'type' in field else field['type']
-            desc   = '' if not 'desc'   in field else field['desc']
-            sample = '' if not 'sample' in field else field['sample']
-            xml +=   '<Field name="properties.' + fieldName + '" type="' + ftype + '" nullable="true" hidden="false" readonly="false" description="' + desc + '" displayName="' + fieldName + '">' \
-                        '<SampleValue>' + sample + '</SampleValue>' \
-                     '</Field>'
-    xml +=        '</Fields>' \
-                '</Properties>' \
+    if fields is None:
+        xml +=    '<Fields/>'
+    else:
+        xml +=    '<Fields>'
+        for fieldName in fields:
+            field   = fields[fieldName]
+            sample  = '<SampleValue>' + field.get('sample', '') + '</SampleValue>'
+            default = '' if not 'default' in field else '<DefaultValue>'+ field['default'] + '</DefaultValue>'
+            props  = {
+                'nullable'    : str(field.get('nullable', True)).lower(),
+                'hidden'      : str(field.get('hidden', False)).lower(),
+                'readonly'    : str(field.get('readonly', False)).lower(),
+                "name"        : 'properties.' + fieldName,
+                "type"        : field.get('type', 'string'),
+                'description' : field.get('desc', ''),
+                'displayName' : field.get('display', fieldName)
+            }
+            if 'default' in field:
+                props['evaluator'] = field.get('evaluator', 'maltego.replace')
+            props = ''.join([ ' ' + k + '="' + props[k] +'"' for k in props])
+            xml +=       '<Field' + props + '>' + \
+                            sample + \
+                            default + \
+                         '</Field>'
+        xml +=       '</Fields>'
+    xml +=      '</Properties>' \
             '</MaltegoEntity>'
     return xml
 
 def write_entities(rdir, module):
     cnf  = module.__config__
     if "entities" in cnf:
-        for name in  cnf['entities']:
-            entity   = cnf['entities'][name]
-            id       = cnf['prefix'] + '.' + name
-            category = entity['category']
-            icon     = entity['icon']
-            fields   = {'Value': {}} if not 'properties' in entity else entity['properties']
-            desc     = '' if not 'desc' in entity else entity['desc']
-            parent   = None if not 'parent' in entity else entity['parent']
-            xml      = get_entity_xml(id, name, desc, category, icon, fields, parent)
+        for id in  cnf['entities']:
+            entity     = cnf['entities'][id]
+            id         = cnf['prefix'] + '.' + id
+            entity['id'] = id
+            xml      = get_entity_xml(**entity)
             fname    = rdir + '/Entities/' + id + '.entity'
             create_dir(os.path.dirname(fname))
             write_file(fname, xml)
@@ -280,9 +291,9 @@ def write_machine(rdir, module):
         for name in cnf['machines']:
             machine = cnf['machines'][name]
             id       = cnf['prefix'] + '.' + name
-            author   = "" if not "author" in cnf else cnf['author']
-            favorite = ['false', 'true'][ int(False) if not 'favorite' in  machine else machine['favorite'] ]
-            enabled  = ['false', 'true'][ int(True) if not 'enabled' in  machine else machine['enabled'] ]
+            author   = cnf.get("author", '')
+            favorite = str(machine.get('favorite', False))
+            enabled  = str(machine.get('favorite', True))
             fname = rdir + '/Machines/' + id.replace('.', '_') + '.properties'
 
             lines = [
@@ -354,11 +365,9 @@ def create_mtz(rdir, module, trxs):
     write_enity_categories(rdir, module)
     write_entities(rdir, module)
     for trx in trxs:
-        # print(trx['param'])
         write_trx_settigs(rdir, trx['id'], trx['cmd'], trx['param'])
         write_trx_fields(rdir, trx['id'], trx['display'], trx['desc'], trx['author'], trx['input'])
-
-
+        
     try:
         os.remove('config.mtz')
     except:
@@ -366,17 +375,18 @@ def create_mtz(rdir, module, trxs):
     zipit([os.path.join(rdir, f) for f in os.listdir(rdir)], 'config.mtz')
     shutil.rmtree(rdir)
 
-
 class DummyMsg:
     def __init__(self, e_type, value, props):
         self.Value = value
         self.Type = e_type
+        self.Properties = {}
         props = re.split(r'(?<!\\)#', props)
         props = [ re.split(r'(?<!\\)=', p) for p in props ]
         for p in props:
             key, value = p
             key = key.replace('-', '_')
-            super().__setattr__(key, value.strip())
+            key = key.replace('properties.', '')
+            self.Properties[key] = value
 
 def run(cnf):
     input_type = set( in_type for key in cnf['transforms'] for in_type in cnf['transforms'][key]['input'])
@@ -406,4 +416,3 @@ if __name__ == "__main__":
     create_mtz('mtz', module, trxs)
     write_wsgi(module)
     print("Created: config.mtz, TRX.wsgi")
-
