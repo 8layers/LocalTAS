@@ -12,7 +12,7 @@ LocalTAS is designed to create Maltego configuration files and launch local tran
 
 LocalTAS requires 
 * [Python3](https://www.python.org/downloads/)
-* [python-resize-image](https://github.com/charlesthk/python-resize-image)
+* [python-resize-image](https://github.com/charlesthk/python-resize-image) (for icons)
 
 Patervas [Python TRX Library](https://docs.paterva.com/en/developer-portal/transform_libraries/) has been updated to Python3 and is included in this repository.
 
@@ -96,8 +96,10 @@ Key | Type | Description | Optional | Default
 icon | string | IconName | no | -
 category | string | Choose or create a category this entity belongs to | no | - 
 desc | string | Description of the entity | yes  | String(0)
-parent | string | Entity ID of the parent entity | yes | None
-properties | dict | Define special properties for your entity | yes | {'Value':{}}
+parent | string | Entity ID of the parent entity | yes | -
+displayValue | string | ID of the property that should be displayed at the graph | yes | -
+editValue | string | ID of the property that should be edited on dbl-click | yes | -
+properties | dict | Define special properties for your entity | yes | -
 
 In case you need the entity id:
 ```
@@ -105,7 +107,7 @@ entityID = __config__['prefix'] + '.' entityName
 # Example result: 8layers.BtcCluster
 ```
 
-##### Property Configuraion
+##### Property Configuration
 ```
 __config__['entities']['EntityName']['properties'] = {
     'PropertyName': {..}
@@ -115,13 +117,19 @@ The following settings are available:
 
 Key | Type | Description | Optional | Default
 ---|---|---|---|---
-Default | string | The Default value of the property | yes | -
-sample | string | The value of the property when dragged from the palette | no | String(0)
+default | string | The Default value of the property | yes | -
+sample | string | The value of the property when dragged from the palette | yes | String(0)
+desc | string | Description for this property | yes | String(0)
 type | string | The data type of this property | yes  | string
+display | string | Value that sould be shown in the property view | yes | PropertyName
+nullable | bool | property can be null | yes | True
+hidden | bool | hide the property | yes | False
+readonly | bool | disallow to edit the value| yes | False
 
 In case you need the property id:
 ```
-propertyID = entityName
+propertyID = 'properties.' + PropertyName
+# Example result: properties.cryptocurrencyaddress
 ```
 
 #### Transform Set Configuration
